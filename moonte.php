@@ -1,4 +1,4 @@
-GIF89a<?php
+<?php
 ob_start(); // Polyglot: capture GIF89a magic bytes so file scanners see an image, not a script
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
